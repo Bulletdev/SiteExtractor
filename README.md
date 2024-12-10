@@ -20,7 +20,7 @@ Um projeto Python com interface gráfica para download completo do conteúdo de 
 
 1. Clone o repositório:
     ```bash
-    git clone https://github.com/usuario/site-extractor.git
+    git clone https://github.com/bulletdev/SiteExtractor.git
     cd site-extractor
     ```
 
