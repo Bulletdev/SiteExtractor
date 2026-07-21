@@ -51,7 +51,23 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--all-domains",
         action="store_true",
-        help="Segue links para fora do domínio inicial (use com cautela).",
+        help="Segue links de páginas para fora do domínio inicial (cautela).",
+    )
+    parser.add_argument(
+        "--assets-same-domain",
+        action="store_true",
+        help="Não baixa assets de outros domínios (CDNs). Por padrão, baixa.",
+    )
+    parser.add_argument(
+        "--max-pages",
+        type=int,
+        default=None,
+        help="Limite de páginas HTML a visitar (evita armadilhas de crawler).",
+    )
+    parser.add_argument(
+        "--ignore-query",
+        action="store_true",
+        help="Colapsa variações de query (?sort=, ?fq=) em uma única página.",
     )
     parser.add_argument(
         "--no-robots",
@@ -94,6 +110,9 @@ def main(argv: list[str] | None = None) -> int:
         args.output,
         max_depth=args.depth,
         same_domain=not args.all_domains,
+        assets_all_domains=not args.assets_same_domain,
+        max_pages=args.max_pages,
+        ignore_query=args.ignore_query,
         respect_robots=not args.no_robots,
         delay=args.delay,
         timeout=args.timeout,
