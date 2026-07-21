@@ -1,0 +1,33 @@
+# Configuração do Semgrep - análise semântica de padrões de código.
+# Uso local:  semgrep --config .semgrep.yml --config p/python .
+#
+# Além das regras da comunidade (p/python), definimos abaixo regras
+# específicas para os riscos deste projeto (um crawler que faz requisições
+# e escreve arquivos a partir de entrada externa).
+rules:
+  - id: requests-sem-timeout
+    languages: [python]
+    severity: WARNING
+    message: >
+      Chamada a requests sem timeout pode travar indefinidamente.
+      Sempre passe timeout=.
+    patterns:
+      - pattern-either:
+          - pattern: requests.get(...)
+          - pattern: requests.post(...)
+          - pattern: $S.get(...)
+      - pattern-not: requests.get(..., timeout=$T, ...)
+      - pattern-not: requests.post(..., timeout=$T, ...)
+      - pattern-not: $S.get(..., timeout=$T, ...)
+
+  - id: escrita-de-arquivo-sem-sanitizacao
+    languages: [python]
+    severity: INFO
+    message: >
+      Caminho derivado de URL externa deve passar por sanitização
+      (ver SiteExtractor._safe_segment) antes de virar caminho de arquivo.
+    patterns:
+      - pattern: open($PATH, ...)
+      - metavariable-regex:
+          metavariable: $PATH
+          regex: .*(url|href|src).*
