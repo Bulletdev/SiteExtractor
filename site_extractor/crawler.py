@@ -27,15 +27,19 @@ DEFAULT_USER_AGENT = (
     "(KHTML, like Gecko) Chrome/85.0.4183.121 Safari/537.36"
 )
 
-# Tags cujo atributo aponta para um recurso que deve ser baixado.
+# Tags cujos atributos apontam para recursos a baixar. Cada tag pode ter mais
+# de um atributo candidato (ex.: img com src, data-src para lazy-load e srcset).
 TAG_ATTRS = {
-    "a": "href",
-    "link": "href",
-    "script": "src",
-    "img": "src",
-    "source": "src",
-    "iframe": "src",
+    "a": ["href"],
+    "link": ["href"],
+    "script": ["src"],
+    "img": ["src", "data-src", "srcset"],
+    "source": ["src", "srcset", "data-src"],
+    "iframe": ["src"],
 }
+
+# Atributos cujo valor é uma lista "url descritor, url descritor" (srcset).
+SRCSET_ATTRS = {"srcset"}
 
 # Extensões tratadas como páginas HTML (elegíveis para recursão).
 HTML_EXTENSIONS = {"", ".html", ".htm", ".xhtml", ".php", ".asp", ".aspx"}
@@ -67,7 +71,16 @@ class SiteExtractor:
         output_dir: Pasta de destino onde a estrutura do site será recriada.
         max_depth: Profundidade máxima de recursão em links HTML. ``0`` baixa
             apenas a página inicial e seus assets diretos.
-        same_domain: Se ``True``, restringe o download ao domínio da URL inicial.
+        same_domain: Se ``True``, a recursão em páginas HTML fica restrita ao
+            domínio da URL inicial.
+        assets_all_domains: Se ``True``, assets (css/js/imagens) são baixados
+            mesmo quando servidos por outro domínio (ex.: um CDN). Sem isso, a
+            cópia offline de sites que usam CDN fica sem estilo e sem imagens.
+        max_pages: Limite rígido de páginas HTML a visitar. ``None`` = sem
+            limite. Protege contra armadilhas de crawler (navegação por filtros
+            que gera infinitas variações de URL).
+        ignore_query: Se ``True``, ignora a query string ao tratar páginas HTML,
+            colapsando variações como ``?sort=`` e ``?fq=`` em uma única página.
         respect_robots: Se ``True``, consulta o ``robots.txt`` e ignora URLs
             proibidas.
         delay: Pausa (em segundos) entre requisições, para não sobrecarregar o
@@ -86,6 +99,9 @@ class SiteExtractor:
         *,
         max_depth: int = 1,
         same_domain: bool = True,
+        assets_all_domains: bool = True,
+        max_pages: int | None = None,
+        ignore_query: bool = False,
         respect_robots: bool = True,
         delay: float = 0.5,
         timeout: float = 10.0,
@@ -97,6 +113,9 @@ class SiteExtractor:
         self.output_dir = output_dir
         self.max_depth = max_depth
         self.same_domain = same_domain
+        self.assets_all_domains = assets_all_domains
+        self.max_pages = max_pages
+        self.ignore_query = ignore_query
         self.respect_robots = respect_robots
         self.delay = delay
         self.timeout = timeout
@@ -135,6 +154,10 @@ class SiteExtractor:
         discovered = 1
 
         while queue and not self._cancelled:
+            if self.max_pages is not None and result.pages_visited >= self.max_pages:
+                logger.info("Limite de %d páginas atingido.", self.max_pages)
+                break
+
             url, depth = queue.popleft()
             if url in self._visited:
                 continue
@@ -187,36 +210,99 @@ class SiteExtractor:
         page_local = self._url_to_local_path(page_url)
 
         for tag in soup.find_all(list(TAG_ATTRS)):
-            attr = TAG_ATTRS[tag.name]
-            value = tag.get(attr)
-            if not value:
-                continue
+            for attr in TAG_ATTRS[tag.name]:
+                value = tag.get(attr)
+                if not value:
+                    continue
 
-            absolute = urljoin(page_url, value)
-            absolute = self._normalize(absolute)
-            parsed = urlparse(absolute)
+                if attr in SRCSET_ATTRS:
+                    self._process_srcset(
+                        tag, attr, page_url, page_local, result, child_pages
+                    )
+                    continue
 
-            if parsed.scheme not in ("http", "https"):
-                continue
-            if self.same_domain and parsed.netloc != self.base_netloc:
-                continue
-
-            is_html = self._looks_like_html(parsed.path)
-
-            if is_html:
-                # Páginas internas: agendadas para recursão; assets ainda não
-                # são baixados aqui (serão quando a página for visitada).
-                child_pages.append(absolute)
-            else:
-                # Asset (css/js/img/...): baixa agora.
-                if self._download_file(absolute, result):
-                    self._sleep()
-
-            if self.rewrite_links and self._allowed(absolute):
-                local_target = self._url_to_local_path(absolute)
-                tag[attr] = self._relative_path(page_local, local_target)
+                local = self._handle_resource(
+                    value, page_url, page_local, result, child_pages
+                )
+                if local is not None:
+                    tag[attr] = local
 
         return child_pages
+
+    def _handle_resource(
+        self,
+        value: str,
+        page_url: str,
+        page_local: str,
+        result: CrawlResult,
+        child_pages: list[str],
+    ) -> str | None:
+        """Trata um único recurso (link, asset ou página).
+
+        Enfileira páginas internas para recursão e baixa assets. Devolve o
+        caminho local relativo quando o link deve ser reescrito, ou ``None``
+        para deixá-lo intacto (recurso externo fora de escopo).
+        """
+        absolute = self._normalize(urljoin(page_url, value))
+        parsed = urlparse(absolute)
+        if parsed.scheme not in ("http", "https"):
+            return None
+
+        same = parsed.netloc == self.base_netloc
+        is_html = self._looks_like_html(parsed.path)
+
+        if is_html:
+            # Página HTML: só entra na recursão se for do mesmo domínio.
+            if self.same_domain and not same:
+                return None
+            if self.ignore_query and parsed.query:
+                absolute = urlunparse(parsed._replace(query="", fragment=""))
+            child_pages.append(absolute)
+            if not self._allowed(absolute):
+                return None
+            if not self.rewrite_links:
+                return None
+            return self._relative_path(page_local, self._url_to_local_path(absolute))
+
+        # Asset (css/js/img/...): baixa se estiver no escopo de domínios.
+        if not (same or self.assets_all_domains):
+            return None
+        if not self._allowed(absolute):
+            return None
+        if self._download_file(absolute, result):
+            self._sleep()
+        if not self.rewrite_links:
+            return None
+        return self._relative_path(page_local, self._url_to_local_path(absolute))
+
+    def _process_srcset(
+        self,
+        tag,
+        attr: str,
+        page_url: str,
+        page_local: str,
+        result: CrawlResult,
+        child_pages: list[str],
+    ) -> None:
+        """Baixa e reescreve cada URL de um atributo srcset."""
+        parts: list[str] = []
+        changed = False
+        for item in tag.get(attr, "").split(","):
+            item = item.strip()
+            if not item:
+                continue
+            bits = item.split()
+            url, descriptor = bits[0], " ".join(bits[1:])
+            local = self._handle_resource(
+                url, page_url, page_local, result, child_pages
+            )
+            new_url = local if local is not None else url
+            if local is not None:
+                changed = True
+            parts.append(f"{new_url} {descriptor}".strip())
+
+        if self.rewrite_links and changed:
+            tag[attr] = ", ".join(parts)
 
     def _fetch_page(self, url: str) -> str | None:
         try:
@@ -332,6 +418,9 @@ class SiteExtractor:
 
     def _allowed(self, url: str) -> bool:
         if not self.respect_robots or self._robots is None:
+            return True
+        # O robots.txt do domínio base não se aplica a outros domínios (CDNs).
+        if urlparse(url).netloc != self.base_netloc:
             return True
         return self._robots.can_fetch(self._user_agent, url)
 
