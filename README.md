@@ -76,7 +76,15 @@ python -m site_extractor.cli https://exemplo.com --depth 3 --zip
 
 # Ignora robots.txt e remove o delay entre requisições
 python -m site_extractor.cli https://exemplo.com --no-robots --delay 0
+
+# E-commerce (recomendado): limita paginas e colapsa filtros/ordenacao
+python -m site_extractor.cli https://loja.com --depth 4 --max-pages 200 --ignore-query
 ```
+
+Por padrão, assets (css/js/imagens) são baixados mesmo quando servidos por um
+CDN em outro domínio, para que a cópia offline mantenha estilo e imagens. Em
+sites grandes com navegação por filtros, use `--max-pages` e `--ignore-query`
+para o crawl convergir.
 
 Veja todas as opções com `python -m site_extractor.cli --help`.
 
