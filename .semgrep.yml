@@ -9,16 +9,14 @@ rules:
     languages: [python]
     severity: WARNING
     message: >
-      Chamada a requests sem timeout pode travar indefinidamente.
+      Chamada HTTP via requests sem timeout pode travar indefinidamente.
       Sempre passe timeout=.
     patterns:
-      - pattern-either:
-          - pattern: requests.get(...)
-          - pattern: requests.post(...)
-          - pattern: $S.get(...)
-      - pattern-not: requests.get(..., timeout=$T, ...)
-      - pattern-not: requests.post(..., timeout=$T, ...)
-      - pattern-not: $S.get(..., timeout=$T, ...)
+      - pattern: requests.$METHOD(...)
+      - metavariable-regex:
+          metavariable: $METHOD
+          regex: ^(get|post|put|delete|patch|head|request)$
+      - pattern-not: requests.$METHOD(..., timeout=$T, ...)
 
   - id: escrita-de-arquivo-sem-sanitizacao
     languages: [python]
