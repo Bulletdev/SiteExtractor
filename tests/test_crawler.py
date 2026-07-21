@@ -88,6 +88,137 @@ class TestRewriteLinks:
         assert all("outro.com" not in c for c in children)
 
 
+class TestAssetsCrossDomain:
+    def test_asset_de_outro_dominio_e_baixado_por_padrao(self, tmp_path):
+        from bs4 import BeautifulSoup
+
+        from site_extractor.crawler import CrawlResult, SiteExtractor
+
+        ext = SiteExtractor(
+            "https://exemplo.com", str(tmp_path), respect_robots=False, delay=0
+        )
+        baixados = []
+        ext._download_file = lambda url, result: baixados.append(url) or True  # type: ignore
+
+        html = '<img src="https://cdn.outrodominio.com/foto.png">'
+        soup = BeautifulSoup(html, "html.parser")
+        ext._process_page("https://exemplo.com/index.html", soup, CrawlResult())
+
+        # Asset em CDN de outro domínio deve ter sido baixado e reescrito.
+        assert "https://cdn.outrodominio.com/foto.png" in baixados
+        assert soup.find("img")["src"].endswith("cdn.outrodominio.com/foto.png")
+
+    def test_asset_de_outro_dominio_ignorado_quando_desabilitado(self, tmp_path):
+        from bs4 import BeautifulSoup
+
+        from site_extractor.crawler import CrawlResult, SiteExtractor
+
+        ext = SiteExtractor(
+            "https://exemplo.com",
+            str(tmp_path),
+            respect_robots=False,
+            delay=0,
+            assets_all_domains=False,
+        )
+        baixados = []
+        ext._download_file = lambda url, result: baixados.append(url) or True  # type: ignore
+
+        html = '<img src="https://cdn.outrodominio.com/foto.png">'
+        soup = BeautifulSoup(html, "html.parser")
+        ext._process_page("https://exemplo.com/index.html", soup, CrawlResult())
+
+        assert baixados == []  # nada baixado
+        assert soup.find("img")["src"] == "https://cdn.outrodominio.com/foto.png"
+
+
+class TestIgnoreQuery:
+    def test_variacoes_de_query_colapsam(self, tmp_path):
+        from bs4 import BeautifulSoup
+
+        from site_extractor.crawler import CrawlResult, SiteExtractor
+
+        ext = SiteExtractor(
+            "https://exemplo.com",
+            str(tmp_path),
+            respect_robots=False,
+            delay=0,
+            ignore_query=True,
+        )
+        html = (
+            '<a href="https://exemplo.com/loja.html?sort=preco">a</a>'
+            '<a href="https://exemplo.com/loja.html?sort=nome">b</a>'
+        )
+        soup = BeautifulSoup(html, "html.parser")
+        children = ext._process_page(
+            "https://exemplo.com/index.html", soup, CrawlResult()
+        )
+        # Ambos os links colapsam para a mesma página sem query.
+        assert children == [
+            "https://exemplo.com/loja.html",
+            "https://exemplo.com/loja.html",
+        ]
+
+
+class TestSrcset:
+    def test_srcset_reescrito_por_url(self, tmp_path):
+        from bs4 import BeautifulSoup
+
+        from site_extractor.crawler import CrawlResult, SiteExtractor
+
+        ext = SiteExtractor(
+            "https://exemplo.com", str(tmp_path), respect_robots=False, delay=0
+        )
+        ext._download_file = lambda url, result: True  # type: ignore
+        html = (
+            '<img srcset="https://exemplo.com/a.png 1x, https://exemplo.com/b.png 2x">'
+        )
+        soup = BeautifulSoup(html, "html.parser")
+        ext._process_page("https://exemplo.com/index.html", soup, CrawlResult())
+        assert soup.find("img")["srcset"] == "a.png 1x, b.png 2x"
+
+    def test_data_src_lazy_load_baixado(self, tmp_path):
+        from bs4 import BeautifulSoup
+
+        from site_extractor.crawler import CrawlResult, SiteExtractor
+
+        ext = SiteExtractor(
+            "https://exemplo.com", str(tmp_path), respect_robots=False, delay=0
+        )
+        baixados = []
+        ext._download_file = lambda url, result: baixados.append(url) or True  # type: ignore
+        html = '<img data-src="https://exemplo.com/lazy.png">'
+        soup = BeautifulSoup(html, "html.parser")
+        ext._process_page("https://exemplo.com/index.html", soup, CrawlResult())
+        assert "https://exemplo.com/lazy.png" in baixados
+        assert soup.find("img")["data-src"] == "lazy.png"
+
+
+class TestMaxPages:
+    def test_limite_de_paginas_para_o_crawl(self, tmp_path, monkeypatch):
+        from site_extractor.crawler import SiteExtractor
+
+        ext = SiteExtractor(
+            "https://exemplo.com",
+            str(tmp_path),
+            respect_robots=False,
+            delay=0,
+            max_depth=5,
+            max_pages=3,
+        )
+        # Cada página aponta para uma nova página interna, gerando recursão.
+        counter = {"n": 0}
+
+        def fake_fetch(url):
+            counter["n"] += 1
+            n = counter["n"]
+            return f'<a href="https://exemplo.com/p{n}.html">x</a>'
+
+        ext._fetch_page = fake_fetch  # type: ignore
+        ext._save_html = lambda url, soup: None  # type: ignore
+        result = ext.run()
+        assert result.pages_visited == 3  # respeitou o teto
+
+
 class TestCreateZip:
     def test_zip_nao_inclui_a_si_mesmo(self, tmp_path):
         src = tmp_path / "site"
