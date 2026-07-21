@@ -49,13 +49,27 @@ class SiteExtractorApp:
         self.spin_depth.insert(0, "1")
         self.spin_depth.pack(side="left", padx=(4, 16))
 
+        tk.Label(options, text="Máx. páginas:").pack(side="left")
+        self.spin_max = tk.Spinbox(options, from_=0, to=100000, width=7)
+        self.spin_max.delete(0, "end")
+        self.spin_max.insert(0, "200")
+        self.spin_max.pack(side="left", padx=(4, 16))
+
+        options2 = tk.Frame(self.root)
+        options2.pack(fill="x", padx=12)
+
         self.var_robots = tk.BooleanVar(value=True)
         tk.Checkbutton(
-            options, text="Respeitar robots.txt", variable=self.var_robots
+            options2, text="Respeitar robots.txt", variable=self.var_robots
         ).pack(side="left")
 
+        self.var_ignore_query = tk.BooleanVar(value=True)
+        tk.Checkbutton(
+            options2, text="Ignorar filtros (query)", variable=self.var_ignore_query
+        ).pack(side="left", padx=8)
+
         self.var_zip = tk.BooleanVar(value=True)
-        tk.Checkbutton(options, text="Gerar ZIP", variable=self.var_zip).pack(
+        tk.Checkbutton(options2, text="Gerar ZIP", variable=self.var_zip).pack(
             side="left", padx=8
         )
 
@@ -93,10 +107,17 @@ class SiteExtractorApp:
         except ValueError:
             depth = 1
 
+        try:
+            max_pages = int(self.spin_max.get()) or None
+        except ValueError:
+            max_pages = None
+
         self._extractor = SiteExtractor(
             url,
             output_dir,
             max_depth=depth,
+            max_pages=max_pages,
+            ignore_query=self.var_ignore_query.get(),
             respect_robots=self.var_robots.get(),
             progress_callback=self._on_progress,
         )
