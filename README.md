@@ -1,58 +1,112 @@
 # Site Extractor
 
-Um projeto Python com interface gráfica para download completo do conteúdo de um site. O aplicativo permite baixar arquivos HTML, CSS, JavaScript, imagens, e outros ativos de um site, mantendo a estrutura de pastas original, e cria um arquivo ZIP com todo o conteúdo baixado.
+Baixa o conteúdo de um site para navegação offline. Recria a estrutura de
+pastas original, baixa HTML, CSS, JavaScript e imagens, reescreve os links para
+caminhos locais (a cópia navega de verdade) e opcionalmente compacta tudo em um
+ZIP. Funciona por interface gráfica (Tkinter) ou por linha de comando.
 
 ## Funcionalidades
 
-- **Download Completo**: Baixa arquivos HTML, CSS, JavaScript, imagens e outros ativos relacionados ao site.
-- **Estrutura de Pastas**: Mantém a estrutura de pastas do site conforme exibida na aba de fontes do navegador.
-- **Compactação**: Cria um arquivo ZIP com o conteúdo baixado.
+- Download recursivo com limite de profundidade configurável.
+- Reescrita de links: a cópia offline navega entre as páginas baixadas.
+- Respeito ao `robots.txt` e rate limiting educado entre requisições.
+- Restrição ao mesmo domínio (com opção de liberar).
+- Interface gráfica com barra de progresso e botão de cancelar (sem travar).
+- Modo linha de comando para automação.
+- Compactação opcional em ZIP.
+
+## Estrutura do projeto
+
+```
+SiteExtractor/
+├── site_extractor/
+│   ├── __init__.py
+│   ├── crawler.py      # lógica de download e reescrita de links (sem UI)
+│   ├── cli.py          # interface de linha de comando
+│   └── gui.py          # interface gráfica (Tkinter, com threading)
+├── tests/
+│   └── test_crawler.py
+├── siteextrator.py     # entrypoint compatível (abre a GUI)
+├── requirements.txt
+├── requirements-dev.txt
+└── pyproject.toml
+```
 
 ## Pré-requisitos
 
-- **Python 3.x** instalado
-- Bibliotecas necessárias:
-  - `requests`
-  - `bs4` (BeautifulSoup4)
-  - `tkinter` (nativo do Python para interface gráfica)
+- Python 3.9 ou superior
+- `requests` e `beautifulsoup4` (ver `requirements.txt`)
+- `tkinter` (nativo do Python; em algumas distros Linux instala-se com o pacote
+  `python3-tk`)
 
 ## Instalação
 
-1. Clone o repositório:
-    ```bash
-    git clone https://github.com/usuario/site-extractor.git
-    cd site-extractor
-    ```
+```bash
+git clone https://github.com/bulletdev/site-extractor.git
+cd site-extractor
+pip install -r requirements.txt
+```
 
-2. Instale as dependências:
-    ```bash
-    pip install -r requirements.txt
-    ```
+Para desenvolvimento (testes e linters):
 
-3. Execute o aplicativo:
-    ```bash
-    python siteextrator.py
-    ```
+```bash
+pip install -r requirements-dev.txt
+```
 
-## Como Usar
+## Uso
 
-1. Insira a URL do site que deseja baixar.
-2. Escolha uma pasta de destino para salvar o conteúdo.
-3. Clique no botão **"Baixar Conteúdo do Site e Compactar"**.
-4. O conteúdo do site será baixado e compactado em um arquivo ZIP na pasta de destino escolhida.
+### Interface gráfica
 
-## Estrutura de Código
+```bash
+python siteextrator.py
+```
 
-- `siteextrator.py` - Arquivo principal que contém o código para baixar o site.
-- `extrair_links` - Função responsável por encontrar e baixar todos os arquivos relacionados ao site.
-- `baixar_arquivo` - Função que baixa um único arquivo e o salva na estrutura de pastas correspondente.
-- `iniciar_download` - Função principal para iniciar o processo de download e compactação.
+1. Informe a URL do site.
+2. Ajuste a profundidade e as opções desejadas.
+3. Clique em "Baixar Site" e escolha a pasta de destino.
+
+### Linha de comando
+
+```bash
+# Baixa a página inicial e seus assets
+python -m site_extractor.cli https://exemplo.com -o ./saida
+
+# Recursão de até 3 níveis, gerando um ZIP
+python -m site_extractor.cli https://exemplo.com --depth 3 --zip
+
+# Ignora robots.txt e remove o delay entre requisições
+python -m site_extractor.cli https://exemplo.com --no-robots --delay 0
+```
+
+Veja todas as opções com `python -m site_extractor.cli --help`.
+
+## Desenvolvimento
+
+Linters e testes (equivalentes Python do ecossistema Rails):
+
+| Ferramenta | Papel                        | Equivalente Rails |
+|------------|------------------------------|-------------------|
+| Ruff       | lint e formatação            | RuboCop           |
+| Bandit     | análise de segurança         | Brakeman          |
+| Semgrep    | análise semântica de padrões | Semgrep           |
+| pytest     | testes                       | RSpec             |
+
+```bash
+ruff check .
+ruff format --check .
+bandit -r site_extractor -c pyproject.toml
+semgrep --config .semgrep.yml --config p/python .
+pytest -q
+```
+
+O mesmo conjunto roda automaticamente no CI (ver `.github/workflows/ci.yml`).
 
 ## Observações
 
-- O programa pode não baixar certos arquivos protegidos por restrições de acesso (como conteúdo dinâmico gerado por JavaScript ou protegido por autenticação).
-- Recomendado para uso em sites de domínio público ou para os quais você tem permissão de download.
+- Conteúdo dinâmico gerado por JavaScript ou protegido por autenticação pode não
+  ser baixado.
+- Use apenas em sites de domínio público ou para os quais você tem permissão.
 
 ## Licença
 
-Este projeto é de código aberto e está disponível sob a licença [MIT](LICENSE).
+Distribuído sob a licença [MIT](LICENSE).
