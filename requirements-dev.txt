@@ -1,0 +1,9 @@
+-r requirements.txt
+
+# Testes
+pytest>=8.0
+
+# Linters / análise estática (equivalentes Python do ecossistema Rails)
+ruff>=0.5        # linter + formatter  (equivalente ao RuboCop)
+bandit>=1.7      # scanner de segurança (equivalente ao Brakeman)
+semgrep>=1.60    # análise semântica de padrões (mesma ferramenta usada no Rails)

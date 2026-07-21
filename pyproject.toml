@@ -1,0 +1,48 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "site-extractor"
+version = "1.0.0"
+description = "Baixa o conteúdo de um site para navegação offline, com CLI e GUI."
+readme = "README.md"
+requires-python = ">=3.9"
+license = { file = "LICENSE" }
+dependencies = [
+    "requests>=2.31",
+    "beautifulsoup4>=4.12",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0", "ruff>=0.5", "bandit>=1.7", "semgrep>=1.60"]
+
+[project.scripts]
+site-extractor = "site_extractor.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["site_extractor*"]
+
+# ----------------------------------------------------------------- Ruff
+# Linter + formatter (equivalente ao RuboCop no ecossistema Rails).
+[tool.ruff]
+line-length = 88
+target-version = "py39"
+
+[tool.ruff.lint]
+# E/W: pycodestyle | F: pyflakes | I: isort | B: bugbear
+# UP: pyupgrade | S: bandit-like | C4: comprehensions | SIM: simplificações
+select = ["E", "W", "F", "I", "B", "UP", "S", "C4", "SIM"]
+ignore = ["S101"]  # uso de assert é esperado nos testes
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S101", "S105", "S106"]
+
+# --------------------------------------------------------------- Bandit
+# Scanner de segurança (equivalente ao Brakeman).
+[tool.bandit]
+exclude_dirs = ["tests", ".git", "build", "dist"]
+
+# --------------------------------------------------------------- pytest
+[tool.pytest.ini_options]
+testpaths = ["tests"]
